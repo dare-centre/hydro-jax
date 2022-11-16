@@ -18,7 +18,7 @@ Otherwise feel free to use the implementation directly from the `gr4j_jax.py` fi
 
 `run_gr4j_jax` takes as input:
 
-    - inputs: (n_timesteps,2) a jax array with values for rain at each timestep in the first column and evaporation (at each timestep) in the second column. e.g., you could create this from numpy arrays `rain` and `et` using: `inputs = jnp.stack([rain,et],axis=1)`.
+    - foring: (n_timesteps,2) a jax array with values for rain at each timestep in the first column and evaporation (at each timestep) in the second column. e.g., you could create this from numpy arrays `rain` and `et` using: `foring = jnp.stack([rain,et],axis=1)`.
     - params_dict: an dictionary with the parameters of the model:
         - s_init: s storage init
         - r_init: r storage init
@@ -32,7 +32,6 @@ and outputs:
     - qsim: (n_timesteps,) a jax array with simulated discharge at each timestep
     - s: (n_timesteps,) a jax array with the s storage at each timestep
     - r: (n_timesteps,) a jax array with the r storage at each timestep
-
 
 ## Directory structure
 

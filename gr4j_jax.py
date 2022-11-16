@@ -4,7 +4,7 @@ import jax.numpy as jnp
 # Please note: this implementation is a translation of the RRMPG implementation
 # of GR4J. The original implementation can be found here:
 # https://github.com/kratzert/RRMPG
-# we will look to contribute back to this resource
+# Hopefully we can we can look to integrating jax models with RRMPG in the future
 
 #################################################################################################
 ####################################################################################################
@@ -21,13 +21,14 @@ def run_gr4j_jax(forcing,params_dict):
             - X1
             - X2
             - X3
-            - X4
+            - X4: max value of 9
     Outputs:
         - qsim: (n_timesteps,) a jax array with simulated discharge at each timestep
         - s: (n_timesteps,) a jax array with the s storage at each timestep
         - r: (n_timesteps,) a jax array with the r storage at each timestep
     '''
 
+    # Some default parameters taken by eyeballing Buzacott et al. (2019)
     X1 = params_dict.get('X1',800)
     X2 = params_dict.get('X2',-0.75)
     X3 = params_dict.get('X3',180)
@@ -36,33 +37,20 @@ def run_gr4j_jax(forcing,params_dict):
     # # compute the unit hydrographs
     num_uh1 = jnp.int32(jnp.ceil(X4))
     num_uh2 = jnp.int32(jnp.ceil(2*X4 + 1))
-    # # this is hardcoded - and in need of a fix
-    # num_uh1 = 2
-    # num_uh2 = 3
 
     # create ords for a resonable number of unit hydrograph
-    # we will allow for a max value of 4 for X4
-    # uh1_range = jnp.arange(4)
-    # uh2_range = jnp.arange(9)
-    # uh1_range = jnp.arange(2+1)
-    # uh2_range = jnp.arange(3+1) 
+    # we will allow for a max value of 10 for X4
+    # I think the only way with jax is to set a limit
+    # its not ideal and probably not the most efficient but it works
+    uh1_range = jnp.arange(11) - (11 - (num_uh1 + 1))
+    uh2_range = jnp.arange(21) - (21 - (num_uh2 + 1))
 
-    # carry a max of 10 through - we have to set the limit somehow
-    uh1_range = jnp.arange(10) - (10 - (num_uh1 + 1))
-    uh2_range = jnp.arange(11) - (11 - (num_uh2 + 1))
-
-    # calculate ordinates of unit hydrographs
-    # s_curves_1 = calc_s_curve_1(1, X4)
-
+    # calculate ordinates of unit hydrographs - s curves first
     calc_sc1_map = jax.vmap(calc_s_curve_1, in_axes=(0, None))
     calc_sc2_map = jax.vmap(calc_s_curve_2, in_axes=(0, None))
-    # need to include extra 0 but timestep = 0 --> 0
     s_curves_1 = calc_sc1_map(uh1_range, X4)
-    # s_curves_1, _ = jax.lax.scan(calc_s_curve_1,X4,range_1.cumsum()-1)
     s_curves_2 = calc_sc2_map(uh2_range, X4)
 
-    # uh1_ord = s_curves_1[1:num_uh1+1] - s_curves_1[:num_uh1]
-    # uh2_ord = s_curves_2[1:num_uh2+1] - s_curves_2[:num_uh2]
     uh1_ord = s_curves_1[1:] - s_curves_1[:-1]
     uh2_ord = s_curves_2[1:] - s_curves_2[:-1]
 
@@ -93,13 +81,33 @@ def run_gr4j_jax(forcing,params_dict):
 @jax.jit
 def gr4j_time_update(carry, t_input):
     '''
-    Time update for GR4J
+    This function implements the time stepping component of the GR4J model.
+    Inputs:
+        - carry: a dictionary with parameters and internal model states that 
+        need to be carried over to the next timestep
+            - s_store: s storage
+            - r_store: r storage
+            - X1
+            - X2
+            - X3
+            - X4: max value of 9
+            - uh1_ords: ordinates of the first unit hydrograph
+            - uh2_ords: ordinates of the second unit hydrograph
+            - uh1: values of the first unit hydrograph
+            - uh2: values of the second unit hydrograph
+            - num_uh1: number of ordinates in the first unit hydrograph
+            - num_uh2: number of ordinates in the second unit hydrograph
+        - t_input: (2,) a jax array with values for rain at this timestep 
+        in the first column and evaporation in the second column.
+    
+    You will note that variables and comments are carried over from the RRMPG 
+    implmentation which was used as the base of this function. We thank the 
+    authors of RRMPG and hope that the jax translation can be helpful for others.
     '''
     # first calculate the net precipitation effect on stores
     is_gain = t_input[0] >= t_input[1]
     p_n_gain = t_input[0] - t_input[1]
     p_n_loss = jnp.float32(0.0)
-    # pe_n_gain = jnp.float32(0.0)
     pe_n_loss = t_input[1] - t_input[0]
 
     # calculate the evaporation effect on production store
@@ -138,9 +146,6 @@ def gr4j_time_update(carry, t_input):
     p_r_uh2 = 0.1 * p_r
     
     # update state of rain, distributed through the unit hydrographs
-    n_uh1 = carry['uh1_ords'].size
-    n_uh2 = carry['uh2_ords'].size
-
     tmp_uh1_1 = carry['uh1'][1:] + carry['uh1_ords'][:-1] * p_r_uh1
     tmp_uh1_2 = jnp.array(carry['uh1_ords'][-1] * p_r_uh1)
     carry['uh1'] = jnp.hstack([tmp_uh1_1,tmp_uh1_2])
@@ -153,7 +158,7 @@ def gr4j_time_update(carry, t_input):
     gw_exchange = carry['X2'] * (carry['r_store'] / carry['X3']) ** 3.5
     
     # update routing store
-    tmp_r_store = jnp.maximum(0, carry['r_store'] + carry['uh1'][10-(carry['num_uh1']+1)] + gw_exchange)
+    tmp_r_store = jnp.maximum(0, carry['r_store'] + carry['uh1'][11-(carry['num_uh1']+1)] + gw_exchange)
 
     # outflow of routing store
     q_r = tmp_r_store * (1 - (1 + (tmp_r_store / carry['X3'])**4)**(-0.25))
@@ -162,9 +167,9 @@ def gr4j_time_update(carry, t_input):
     carry['r_store'] = tmp_r_store - q_r
     
     # calculate flow component of unit hydrograph 2
-    q_d = jnp.maximum(0, carry['uh2'][11-(carry['num_uh2']+1)] + gw_exchange)
+    q_d = jnp.maximum(0, carry['uh2'][21-(carry['num_uh2']+1)] + gw_exchange)
     
-    # total discharge of this timestep avoiding nans
+    # total discharge of this timestep
     qsim = q_r + q_d
 
     return carry, jnp.stack([qsim, carry['s_store'], carry['r_store']], axis=0)
@@ -174,8 +179,9 @@ def gr4j_time_update(carry, t_input):
 
 @jax.jit
 def calc_s_curve_1(timestep, X4):
+    # working around jax's dislike of if statements
     out = jnp.piecewise(
-        jnp.float32(timestep), # output seems to default to this type
+        jnp.float32(timestep), # output defaults to the type of this
         [
             timestep <= 0,
             (timestep < X4) & (timestep > 0)
@@ -191,7 +197,6 @@ def calc_s_curve_1(timestep, X4):
 
 @jax.jit
 def calc_s_curve_2(timestep, X4):
-
     out = jnp.piecewise(
         jnp.float32(timestep), 
         [
