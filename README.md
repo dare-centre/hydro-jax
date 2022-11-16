@@ -1,11 +1,12 @@
 # GR4J JAX implementation
-DARE, 2022
+DARE, 2022<br>
 Contact: Joshua Simmons
 
 This repository contains a GR4J implementation in JAX.
 
-The model is described in the following paper:
+The model is described in the paper:
 
+*Perrin, C., Michel, C., & Andréassian, V. (2003). Improvement of a parsimonious model for streamflow simulation. Journal of hydrology, 279(1-4), 275-289.*
 
 To run the tests (`01_model_test.ipynb`) you will need to have the [RRMPG repository ](https://github.com/kratzert/RRMPG) package downloaded and available in a base directory. We will use the numpy RRMPG implmenetation, test scaffold and associated data as a reference to test the JAX implementation. 
 
@@ -39,6 +40,3 @@ and outputs:
 - `01_model_test.ipynb`: notebook to test the JAX implementation using the tests from the RRMPG numpy implementation
 - `tests.py`: contains the scaffold to run the tests adapted from RRMPG
 - `RRMPG_master`: folder where the downloaded RRMPG package should be placed
-
-
-
