@@ -2,7 +2,7 @@
 DARE, 2022<br>
 Contact: Joshua Simmons
 
-This repository contains a GR4J implementation in JAX.
+This repository contains a GR4J implementation in JAX. It is intended that a handful of commonly used models (AWBM, HyMod) are added to this repository in the future.
 
 The model is described in the paper:
 
